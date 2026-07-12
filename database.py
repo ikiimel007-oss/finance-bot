@@ -32,8 +32,7 @@ def _exec(conn, sql, params=None):
 
 
 def _commit(conn):
-    if USE_PG:
-        conn.commit()
+    conn.commit()
 
 
 def _close(conn):
