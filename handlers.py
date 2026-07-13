@@ -33,14 +33,20 @@ MONTH_NAMES = [
 def menu_button():
     return [InlineKeyboardButton("🏠 Menu Utama", callback_data="menu_main")]
 
-def main_menu_keyboard():
+def global_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 Manajemen Keuangan", callback_data="menu_finance")],
+        [InlineKeyboardButton("📋 Absensi", callback_data="menu_absensi")],
+        [InlineKeyboardButton("❓ Bantuan", callback_data="menu_help")],
+    ])
+
+def finance_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 Catat Transaksi", callback_data="menu_add")],
         [InlineKeyboardButton("📊 Laporan Keuangan", callback_data="menu_report")],
         [InlineKeyboardButton("🎯 Anggaran Budget", callback_data="menu_budget")],
         [InlineKeyboardButton("📁 Kelola Kategori", callback_data="menu_categories")],
-        [InlineKeyboardButton("❓ Bantuan", callback_data="menu_help")],
-    ])
+    ] + [menu_button()])
 
 def wrap_keyboard(buttons):
     return InlineKeyboardMarkup(buttons + [menu_button()])
@@ -53,6 +59,16 @@ def fmt_rp(amount):
 async def menu_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    text = (
+        "🏠 *Menu Utama*\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Pilih menu di bawah:"
+    )
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=global_menu_keyboard())
+
+async def menu_finance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     user_id = update.effective_user.id
     if not db.default_categories_exist(user_id):
         db.seed_default_categories(user_id)
@@ -62,37 +78,28 @@ async def menu_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = summary["income"] - summary["expense"]
 
     text = (
-        "🏦 *Finance Bot* — Manajemen Keuangan Pribadi\n"
+        "💰 *Manajemen Keuangan*\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         f"📅 *{MONTH_NAMES[now.month]} {now.year}*\n"
         f"💵 Pemasukan: *{fmt_rp(summary['income'])}*\n"
         f"💸 Pengeluaran: *{fmt_rp(summary['expense'])}*\n"
         f"💰 Saldo: *{fmt_rp(balance)}*\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Pilih menu di bawah:"
+        "Pilih menu:"
     )
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=finance_menu_keyboard())
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not db.default_categories_exist(user_id):
         db.seed_default_categories(user_id)
 
-    now = datetime.now()
-    summary = db.get_monthly_summary(user_id, now.year, now.month)
-    balance = summary["income"] - summary["expense"]
-
     text = (
-        "🏦 *Finance Bot* — Manajemen Keuangan Pribadi\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📅 *{MONTH_NAMES[now.month]} {now.year}*\n"
-        f"💵 Pemasukan: *{fmt_rp(summary['income'])}*\n"
-        f"💸 Pengeluaran: *{fmt_rp(summary['expense'])}*\n"
-        f"💰 Saldo: *{fmt_rp(balance)}*\n"
+        "🏠 *Menu Utama*\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         "Pilih menu di bawah:"
     )
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=global_menu_keyboard())
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (

@@ -14,6 +14,7 @@ from telegram.ext import (
 import database as db
 from config import BOT_TOKEN
 from handlers import *
+from absensi_handlers import *
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -49,6 +50,8 @@ def main():
 
     # ─── Menu Utama Callback ────────────────────────
     app.add_handler(CallbackQueryHandler(menu_main, pattern=r"^menu_main$"))
+    app.add_handler(CallbackQueryHandler(menu_finance, pattern=r"^menu_finance$"))
+    app.add_handler(CallbackQueryHandler(absensi_menu, pattern=r"^menu_absensi$"))
 
     # ─── Command handlers ───────────────────────────
     app.add_handler(CommandHandler("start", start))
@@ -107,6 +110,78 @@ def main():
     )
     app.add_handler(cat_conv)
     app.add_handler(CallbackQueryHandler(categories_callback, pattern=r"^cat_"))
+
+    # ─── ABSENSI ─────────────────────────────────────
+    # Check-in flow (uses user_data, not ConversationHandler)
+    app.add_handler(CallbackQueryHandler(abs_checkin, pattern=r"^abs_checkin$"))
+    app.add_handler(CallbackQueryHandler(abs_pick_member, pattern=r"^abspick_"))
+    app.add_handler(CallbackQueryHandler(abs_toggle_mode, pattern=r"^abs_toggle_mode$"))
+    app.add_handler(CallbackQueryHandler(abs_save_checkin, pattern=r"^abs_save_checkin$"))
+
+    # Custom date conversation
+    abs_date_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(abs_custom_date, pattern=r"^abs_custom_date$")],
+        states={
+            ABSENSI_CUSTOM_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, abs_custom_date_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(menu_main, pattern=r"^menu_main$")],
+        allow_reentry=True,
+    )
+    app.add_handler(abs_date_conv)
+
+    # Anggota
+    app.add_handler(CallbackQueryHandler(abs_list_members, pattern=r"^abs_list_members$"))
+    app.add_handler(CallbackQueryHandler(abs_delete_member_start, pattern=r"^abs_delete_member$"))
+    app.add_handler(CallbackQueryHandler(abs_delete_member_confirm, pattern=r"^absdel_"))
+
+    abs_add_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(abs_add_member_start, pattern=r"^abs_add_member$")],
+        states={
+            ABSENSI_ADD_MEMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, abs_add_member_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(menu_main, pattern=r"^menu_main$")],
+        allow_reentry=True,
+    )
+    app.add_handler(abs_add_conv)
+
+    # Cek absensi
+    app.add_handler(CallbackQueryHandler(abs_check_today, pattern=r"^abs_check_today$"))
+
+    abs_cek_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(abs_check_date_start, pattern=r"^abs_check_date$")],
+        states={
+            ABSENSI_CEK_TANGGAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, abs_check_date_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(menu_main, pattern=r"^menu_main$")],
+        allow_reentry=True,
+    )
+    app.add_handler(abs_cek_conv)
+
+    # Persentase
+    abs_persen_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(abs_percentage_start, pattern=r"^abs_percentage$")],
+        states={
+            ABSENSI_PERSENTASE: [MessageHandler(filters.TEXT & ~filters.COMMAND, abs_percentage_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(menu_main, pattern=r"^menu_main$")],
+        allow_reentry=True,
+    )
+    app.add_handler(abs_persen_conv)
+
+    # Hapus absen
+    app.add_handler(CallbackQueryHandler(abs_delete_record_start, pattern=r"^abs_delete_record$"))
+    app.add_handler(CallbackQueryHandler(abs_delete_record_confirm, pattern=r"^absdelrec_"))
+
+    # Excel
+    abs_excel_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(abs_excel_month, pattern=r"^abs_excel_month$")],
+        states={
+            ABSENSI_EXCEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, abs_excel_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(menu_main, pattern=r"^menu_main$")],
+        allow_reentry=True,
+    )
+    app.add_handler(abs_excel_conv)
 
     logger.info("Bot started")
     app.run_polling()

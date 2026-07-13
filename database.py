@@ -73,6 +73,23 @@ def init_db():
                 UNIQUE(user_id, category_id, month)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS members (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS absensi (
+                id SERIAL PRIMARY KEY,
+                member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                date TEXT NOT NULL,
+                check_in TEXT,
+                check_out TEXT,
+                status TEXT DEFAULT 'hadir',
+                UNIQUE(member_id, date)
+            )
+        """)
     else:
         cur.executescript("""
             CREATE TABLE IF NOT EXISTS categories (
@@ -101,6 +118,24 @@ def init_db():
                 UNIQUE(user_id, category_id, month),
                 FOREIGN KEY(category_id) REFERENCES categories(id)
             );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS absensi (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                member_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                check_in TEXT,
+                check_out TEXT,
+                status TEXT DEFAULT 'hadir',
+                UNIQUE(member_id, date),
+                FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE CASCADE
+            )
         """)
     _commit(conn)
     _close(conn)
@@ -300,3 +335,222 @@ def delete_budget(user_id, budget_id):
     deleted = cur.rowcount > 0
     _close(conn)
     return deleted
+
+
+# ─── ABSENSI ────────────────────────────────────────────
+
+def get_members():
+    conn = get_db()
+    cur = _exec(conn, "SELECT id, name FROM members ORDER BY name")
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    else:
+        rows = cur.fetchall()
+    _close(conn)
+    return rows
+
+
+def add_member(name):
+    conn = get_db()
+    try:
+        cur = _exec(conn, "INSERT INTO members (name) VALUES (?)", (name,))
+        _commit(conn)
+        if USE_PG:
+            return cur.fetchone()[0]
+        else:
+            return cur.lastrowid
+    except Exception:
+        return None
+    finally:
+        _close(conn)
+
+
+def add_members_bulk(names):
+    conn = get_db()
+    added = []
+    skipped = []
+    for name in names:
+        try:
+            cur = _exec(conn, "INSERT INTO members (name) VALUES (?)", (name,))
+            _commit(conn)
+            added.append(name)
+        except Exception:
+            skipped.append(name)
+    _close(conn)
+    return added, skipped
+
+
+def delete_member(member_id):
+    conn = get_db()
+    cur = _exec(conn, "DELETE FROM members WHERE id = ?", (member_id,))
+    _commit(conn)
+    deleted = cur.rowcount > 0
+    _close(conn)
+    return deleted
+
+
+def get_member(member_id):
+    conn = get_db()
+    cur = _exec(conn, "SELECT id, name FROM members WHERE id = ?", (member_id,))
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        row = cur.fetchone()
+        row = dict(zip(cols, row)) if row else None
+    else:
+        row = cur.fetchone()
+    _close(conn)
+    return row
+
+
+def get_member_by_name(name):
+    conn = get_db()
+    cur = _exec(conn, "SELECT id, name FROM members WHERE name = ?", (name,))
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        row = cur.fetchone()
+        row = dict(zip(cols, row)) if row else None
+    else:
+        row = cur.fetchone()
+    _close(conn)
+    return row
+
+
+def add_absensi(member_id, date, check_in, status="hadir"):
+    conn = get_db()
+    try:
+        cur = _exec(conn,
+            "INSERT INTO absensi (member_id, date, check_in, status) VALUES (?, ?, ?, ?)",
+            (member_id, date, check_in, status))
+        _commit(conn)
+        if USE_PG:
+            return cur.fetchone()[0]
+        else:
+            return cur.lastrowid
+    except Exception:
+        return None
+    finally:
+        _close(conn)
+
+
+def get_absensi_record(member_id, date):
+    conn = get_db()
+    cur = _exec(conn,
+        "SELECT id, check_in, status FROM absensi WHERE member_id = ? AND date = ?",
+        (member_id, date))
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        row = cur.fetchone()
+        row = dict(zip(cols, row)) if row else None
+    else:
+        row = cur.fetchone()
+    _close(conn)
+    return row
+
+
+def get_absensi_by_date(date):
+    conn = get_db()
+    cur = _exec(conn, """
+        SELECT m.id, m.name, a.check_in, a.check_out, a.status
+        FROM members m
+        LEFT JOIN absensi a ON a.member_id = m.id AND a.date = ?
+        ORDER BY m.name
+    """, (date,))
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    else:
+        rows = cur.fetchall()
+    _close(conn)
+    return rows
+
+
+def get_attendance_dates(year, month):
+    month_str = f"{year:04d}-{month:02d}"
+    conn = get_db()
+    cur = _exec(conn,
+        "SELECT DISTINCT date FROM absensi WHERE date LIKE ? ORDER BY date",
+        (f"{month_str}%",))
+    if USE_PG:
+        rows = [r[0] for r in cur.fetchall()]
+    else:
+        rows = [r["date"] for r in cur.fetchall()]
+    _close(conn)
+    return rows
+
+
+def get_member_month_absensi(member_id, year, month):
+    month_str = f"{year:04d}-{month:02d}"
+    conn = get_db()
+    cur = _exec(conn, """
+        SELECT date, check_in, status FROM absensi
+        WHERE member_id = ? AND date LIKE ?
+        ORDER BY date
+    """, (member_id, f"{month_str}%"))
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    else:
+        rows = cur.fetchall()
+    _close(conn)
+    return rows
+
+
+def get_month_attendance_summary(year, month):
+    month_str = f"{year:04d}-{month:02d}"
+    conn = get_db()
+    cur = _exec(conn, """
+        SELECT m.id, m.name,
+            SUM(CASE WHEN a.status = 'hadir' AND a.check_in IS NOT NULL THEN 1 ELSE 0 END) as hadir,
+            SUM(CASE WHEN a.status = 'izin' THEN 1 ELSE 0 END) as izin
+        FROM members m
+        LEFT JOIN absensi a ON a.member_id = m.id AND a.date LIKE ?
+        GROUP BY m.id
+        ORDER BY m.name
+    """, (f"{month_str}%",))
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    else:
+        rows = cur.fetchall()
+    _close(conn)
+    return rows
+
+
+def delete_absensi_record(absensi_id):
+    conn = get_db()
+    cur = _exec(conn, "DELETE FROM absensi WHERE id = ?", (absensi_id,))
+    _commit(conn)
+    deleted = cur.rowcount > 0
+    _close(conn)
+    return deleted
+
+
+def get_recent_absensi(limit=30):
+    conn = get_db()
+    cur = _exec(conn, """
+        SELECT a.id, m.name, a.date FROM absensi a
+        INNER JOIN members m ON m.id = a.member_id
+        ORDER BY a.date DESC, m.name
+        LIMIT ?
+    """, (limit,))
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    else:
+        rows = cur.fetchall()
+    _close(conn)
+    return rows
+
+
+def get_absensi_count_by_date(date):
+    conn = get_db()
+    cur = _exec(conn,
+        "SELECT COUNT(DISTINCT date) as cnt FROM absensi WHERE date LIKE ?",
+        (f"{date}%",))
+    if USE_PG:
+        cnt = cur.fetchone()[0]
+    else:
+        cnt = cur.fetchone()["cnt"]
+    _close(conn)
+    return cnt
