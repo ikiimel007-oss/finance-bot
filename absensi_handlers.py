@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 import os
 import tempfile
@@ -150,7 +151,6 @@ async def abs_custom_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def abs_custom_date_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    import re
     m = re.match(r"^(\d{2})-(\d{2})-(\d{4})$", text)
     if not m:
         await update.message.reply_text("⚠️ Format salah. Gunakan: dd-mm-yyyy\nContoh: `15-07-2026`", parse_mode="Markdown")
@@ -330,7 +330,6 @@ async def abs_check_date_start(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def abs_check_date_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    import re
     m = re.match(r"^(\d{2})-(\d{2})-(\d{4})$", text)
     if not m:
         await update.message.reply_text("⚠️ Format salah. Gunakan: dd-mm-yyyy")
@@ -392,22 +391,21 @@ async def abs_percentage_text(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     lines = []
     for s in summary:
-        hadir = s["hadir"] if not hasattr(s, "get") else s.get("hadir", 0)
-        izin = s["izin"] if not hasattr(s, "get") else s.get("izin", 0)
-        nama = s["name"] if not hasattr(s, "get") else s.get("name", "?")
+        hadir = s["hadir"]
+        izin = s["izin"]
+        nama = s["name"]
         pct = (hadir / hari_kerja * 100) if hari_kerja else 0
-        # Riwayat
-        mid = s["id"] if not hasattr(s, "get") else s.get("id", 0)
+        mid = s["id"]
         riwayat = db.get_member_month_absensi(mid, tahun, bulan)
         riwayat_str = ""
         if riwayat:
             parts_r = []
             for r in riwayat:
-                day = r["date"][-2:] if not hasattr(r, "get") else r.get("date", "")[-2:]
-                if r.get("status") == "izin":
+                day = r["date"][-2:]
+                if r["status"] == "izin":
                     parts_r.append(f"{day}(izin)")
                 else:
-                    parts_r.append(f"{day} ({r.get('check_in', '?')})")
+                    parts_r.append(f"{day} ({r['check_in']})")
             if parts_r:
                 riwayat_str = "\n   📆 " + ", ".join(parts_r)
         lines.append(f"- {nama}: {hadir}/{hari_kerja} ({pct:.1f}%){riwayat_str}")
@@ -516,8 +514,8 @@ async def abs_excel_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cell.border = thin_border
 
         for i, m in enumerate(members, 1):
-            mid = m["id"] if not hasattr(m, "get") else m.get("id")
-            mname = m["name"] if not hasattr(m, "get") else m.get("name")
+            mid = m["id"]
+            mname = m["name"]
             row_data = [i, mname]
             hadir = 0
             izin = 0
