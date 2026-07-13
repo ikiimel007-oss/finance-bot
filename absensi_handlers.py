@@ -32,8 +32,14 @@ MONTH_NAMES = [
 def menu_button_abs():
     return [InlineKeyboardButton("🏠 Menu Utama", callback_data="menu_main")]
 
+def back_button_abs():
+    return [InlineKeyboardButton("◀️ Kembali", callback_data="menu_absensi")]
+
 def wrap_keyboard_abs(buttons):
     return InlineKeyboardMarkup(buttons + [menu_button_abs()])
+
+def wrap_keyboard_abs_back(buttons):
+    return InlineKeyboardMarkup(buttons + [back_button_abs(), menu_button_abs()])
 
 
 def absensi_menu_keyboard():
@@ -65,7 +71,13 @@ async def absensi_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         "Pilih menu di bawah:"
     )
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=absensi_menu_keyboard())
+    try:
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=absensi_menu_keyboard())
+    except Exception as e:
+        if "message is not modified" in str(e).lower():
+            pass
+        else:
+            raise
 
 
 # ─── CHECK-IN FLOW ──────────────────────────────────────────
@@ -77,7 +89,7 @@ async def abs_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not members:
         await query.edit_message_text(
             "📭 Belum ada anggota. Tambah anggota dulu.",
-            reply_markup=wrap_keyboard_abs([]),
+            reply_markup=wrap_keyboard_abs_back([]),
         )
         return
 
@@ -105,6 +117,7 @@ async def _show_checkin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     buttons.append([InlineKeyboardButton(f"🔄 Mode: {mode_label}", callback_data="abs_toggle_mode")])
     buttons.append([InlineKeyboardButton("📅 Custom Tanggal", callback_data="abs_custom_date")])
     buttons.append([InlineKeyboardButton("✅ SAVE", callback_data="abs_save_checkin")])
+    buttons.append(back_button_abs())
     buttons.append(menu_button_abs())
 
     text = (
@@ -114,7 +127,13 @@ async def _show_checkin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"Pilih anggota (bisa banyak):\n"
         f"Terpilih: {len(sel)}"
     )
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
+    try:
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
+    except Exception as e:
+        if "message is not modified" in str(e).lower():
+            pass
+        else:
+            raise
 
 
 async def abs_pick_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,7 +163,7 @@ async def abs_custom_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📅 Kirim tanggal check-in (format: *dd-mm-yyyy*)\n"
         "Contoh: `15-07-2026`",
         parse_mode="Markdown",
-        reply_markup=wrap_keyboard_abs([]),
+        reply_markup=wrap_keyboard_abs_back([]),
     )
     return ABSENSI_CUSTOM_DATE
 
@@ -170,6 +189,7 @@ async def abs_custom_date_text(update: Update, context: ContextTypes.DEFAULT_TYP
         buttons.append([InlineKeyboardButton(f"☐ {mm['name']}", callback_data=f"abspick_{mm['id']}")])
     buttons.append([InlineKeyboardButton("📅 Custom Tanggal", callback_data="abs_custom_date")])
     buttons.append([InlineKeyboardButton("✅ SAVE", callback_data="abs_save_checkin")])
+    buttons.append(back_button_abs())
     buttons.append(menu_button_abs())
 
     await update.message.reply_text(
@@ -228,7 +248,7 @@ async def abs_list_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = f"👥 *Daftar Anggota ({len(members)})*\n" + "━━━━━━━━━━━━━━━━━━━━━━\n"
         text += "\n".join(f"{i+1}. {m['name']}" for i, m in enumerate(members))
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=wrap_keyboard_abs([]))
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=wrap_keyboard_abs_back([]))
 
 
 async def abs_add_member_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -238,7 +258,7 @@ async def abs_add_member_start(update: Update, context: ContextTypes.DEFAULT_TYP
         "✏️ Kirim nama anggota baru\n\n"
         "Bisa banyak nama, pisahkan dengan *enter* (baris baru).",
         parse_mode="Markdown",
-        reply_markup=wrap_keyboard_abs([]),
+        reply_markup=wrap_keyboard_abs_back([]),
     )
     return ABSENSI_ADD_MEMBER
 
@@ -268,7 +288,7 @@ async def abs_delete_member_start(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     members = db.get_members()
     if not members:
-        await query.edit_message_text("📭 Belum ada anggota.", reply_markup=wrap_keyboard_abs([]))
+        await query.edit_message_text("📭 Belum ada anggota.", reply_markup=wrap_keyboard_abs_back([]))
         return
 
     buttons = [[InlineKeyboardButton(f"🗑 {m['name']}", callback_data=f"absdel_{m['id']}")] for m in members]
@@ -286,7 +306,7 @@ async def abs_delete_member_confirm(update: Update, context: ContextTypes.DEFAUL
     member_id = int(query.data.split("_")[1])
     member = db.get_member(member_id)
     if not member:
-        await query.edit_message_text("❌ Anggota tidak ditemukan.", reply_markup=wrap_keyboard_abs([]))
+        await query.edit_message_text("❌ Anggota tidak ditemukan.", reply_markup=wrap_keyboard_abs_back([]))
         return
     db.delete_member(member_id)
     await query.edit_message_text(
@@ -314,7 +334,7 @@ async def abs_check_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 lines.append(f"- {d['name']}: ❌ Tidak hadir")
         text = f"📋 *Absensi Hari Ini ({today})*\n\n" + "\n".join(lines)
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=wrap_keyboard_abs([]))
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=wrap_keyboard_abs_back([]))
 
 
 async def abs_check_date_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -323,7 +343,7 @@ async def abs_check_date_start(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(
         "📅 Kirim tanggal (format: *dd-mm-yyyy*)\nContoh: `12-07-2026`",
         parse_mode="Markdown",
-        reply_markup=wrap_keyboard_abs([]),
+        reply_markup=wrap_keyboard_abs_back([]),
     )
     return ABSENSI_CEK_TANGGAL
 
@@ -360,7 +380,7 @@ async def abs_percentage_start(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(
         "📊 Kirim bulan dan tahun\nContoh: `7 2026`",
         parse_mode="Markdown",
-        reply_markup=wrap_keyboard_abs([]),
+        reply_markup=wrap_keyboard_abs_back([]),
     )
     return ABSENSI_PERSENTASE
 
@@ -422,7 +442,7 @@ async def abs_delete_record_start(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     data = db.get_recent_absensi(30)
     if not data:
-        await query.edit_message_text("📭 Tidak ada data absen.", reply_markup=wrap_keyboard_abs([]))
+        await query.edit_message_text("📭 Tidak ada data absen.", reply_markup=wrap_keyboard_abs_back([]))
         return
 
     buttons = []
@@ -444,7 +464,7 @@ async def abs_delete_record_confirm(update: Update, context: ContextTypes.DEFAUL
     if db.delete_absensi_record(record_id):
         await query.edit_message_text("✅ Data absen berhasil dihapus!", reply_markup=absensi_menu_keyboard())
     else:
-        await query.edit_message_text("❌ Data tidak ditemukan.", reply_markup=wrap_keyboard_abs([]))
+        await query.edit_message_text("❌ Data tidak ditemukan.", reply_markup=wrap_keyboard_abs_back([]))
 
 
 # ─── DOWNLOAD EXCEL ──────────────────────────────────────
@@ -455,7 +475,7 @@ async def abs_excel_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(
         "📥 Kirim bulan dan tahun\nContoh: `7 2026`",
         parse_mode="Markdown",
-        reply_markup=wrap_keyboard_abs([]),
+        reply_markup=wrap_keyboard_abs_back([]),
     )
     return ABSENSI_EXCEL
 

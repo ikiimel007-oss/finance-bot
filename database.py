@@ -16,7 +16,7 @@ def get_db():
         return conn
     import sqlite3
     conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = lambda cursor, row: {col[0]: row[i] for i, col in enumerate(cursor.description)}
     return conn
 
 
@@ -90,6 +90,16 @@ def init_db():
                 UNIQUE(member_id, date)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS kegiatan (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                text TEXT NOT NULL,
+                done INTEGER DEFAULT 0,
+                day TEXT NOT NULL,
+                month_year TEXT NOT NULL
+            )
+        """)
     else:
         cur.executescript("""
             CREATE TABLE IF NOT EXISTS categories (
@@ -137,6 +147,16 @@ def init_db():
                 FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE CASCADE
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS kegiatan (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                done INTEGER DEFAULT 0,
+                day TEXT NOT NULL,
+                month_year TEXT NOT NULL
+            )
+        """)
     _commit(conn)
     _close(conn)
 
@@ -148,7 +168,7 @@ def default_categories_exist(user_id):
     if USE_PG:
         count = count[0]
     else:
-        count = count[0]
+        count = count["cnt"]
     _close(conn)
     return count > 0
 
@@ -197,12 +217,16 @@ def get_categories(user_id, typ=None):
 def add_category(user_id, name, typ):
     conn = get_db()
     try:
-        cur = _exec(conn, "INSERT INTO categories (user_id, name, type) VALUES (?, ?, ?)", (user_id, name, typ))
-        _commit(conn)
         if USE_PG:
-            return cur.fetchone()[0]
+            cur = _exec(conn,
+                "INSERT INTO categories (user_id, name, type) VALUES (%s, %s, %s) RETURNING id",
+                (user_id, name, typ))
+            tid = cur.fetchone()[0]
         else:
-            return cur.lastrowid
+            cur = _exec(conn, "INSERT INTO categories (user_id, name, type) VALUES (?, ?, ?)", (user_id, name, typ))
+            tid = cur.lastrowid
+        _commit(conn)
+        return tid
     except Exception:
         return None
     finally:
@@ -222,13 +246,15 @@ def add_transaction(user_id, amount, typ, category_id, note="", date_str=None):
     if date_str is None:
         date_str = datetime.now().strftime("%Y-%m-%d")
     conn = get_db()
-    cur = _exec(conn, "INSERT INTO transactions (user_id, amount, type, category_id, note, date) VALUES (?, ?, ?, ?, ?, ?)", (user_id, amount, typ, category_id, note, date_str))
-    _commit(conn)
     if USE_PG:
-        cur = _exec(conn, "SELECT LASTVAL()")
+        cur = _exec(conn,
+            "INSERT INTO transactions (user_id, amount, type, category_id, note, date) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (user_id, amount, typ, category_id, note, date_str))
         tid = cur.fetchone()[0]
     else:
+        cur = _exec(conn, "INSERT INTO transactions (user_id, amount, type, category_id, note, date) VALUES (?, ?, ?, ?, ?, ?)", (user_id, amount, typ, category_id, note, date_str))
         tid = cur.lastrowid
+    _commit(conn)
     _close(conn)
     return tid
 
@@ -354,12 +380,16 @@ def get_members():
 def add_member(name):
     conn = get_db()
     try:
-        cur = _exec(conn, "INSERT INTO members (name) VALUES (?)", (name,))
-        _commit(conn)
         if USE_PG:
-            return cur.fetchone()[0]
+            cur = _exec(conn,
+                "INSERT INTO members (name) VALUES (%s) RETURNING id",
+                (name,))
+            mid = cur.fetchone()[0]
         else:
-            return cur.lastrowid
+            cur = _exec(conn, "INSERT INTO members (name) VALUES (?)", (name,))
+            mid = cur.lastrowid
+        _commit(conn)
+        return mid
     except Exception:
         return None
     finally:
@@ -419,14 +449,18 @@ def get_member_by_name(name):
 def add_absensi(member_id, date, check_in, status="hadir"):
     conn = get_db()
     try:
-        cur = _exec(conn,
-            "INSERT INTO absensi (member_id, date, check_in, status) VALUES (?, ?, ?, ?)",
-            (member_id, date, check_in, status))
-        _commit(conn)
         if USE_PG:
-            return cur.fetchone()[0]
+            cur = _exec(conn,
+                "INSERT INTO absensi (member_id, date, check_in, status) VALUES (%s, %s, %s, %s) RETURNING id",
+                (member_id, date, check_in, status))
+            aid = cur.fetchone()[0]
         else:
-            return cur.lastrowid
+            cur = _exec(conn,
+                "INSERT INTO absensi (member_id, date, check_in, status) VALUES (?, ?, ?, ?)",
+                (member_id, date, check_in, status))
+            aid = cur.lastrowid
+        _commit(conn)
+        return aid
     except Exception:
         return None
     finally:
@@ -554,3 +588,74 @@ def get_absensi_count_by_date(date):
         cnt = cur.fetchone()["cnt"]
     _close(conn)
     return cnt
+
+
+# ─── KEGIATAN ────────────────────────────────────────────
+
+def _rows_to_dicts(cur):
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+    return cur.fetchall()
+
+def _row_to_dict(cur):
+    if USE_PG:
+        cols = [desc[0] for desc in cur.description]
+        row = cur.fetchone()
+        return dict(zip(cols, row)) if row else None
+    return cur.fetchone()
+
+def get_kegiatan(chat_id):
+    conn = get_db()
+    cur = _exec(conn, "SELECT * FROM kegiatan WHERE chat_id = ? ORDER BY id", (chat_id,))
+    rows = _rows_to_dicts(cur)
+    _close(conn)
+    return rows
+
+def add_kegiatan(chat_id, text, day, month_year):
+    conn = get_db()
+    try:
+        if USE_PG:
+            cur = _exec(conn,
+                "INSERT INTO kegiatan (chat_id, text, done, day, month_year) VALUES (%s, %s, 0, %s, %s) RETURNING id",
+                (chat_id, text, day, month_year))
+            tid = cur.fetchone()[0]
+        else:
+            cur = _exec(conn,
+                "INSERT INTO kegiatan (chat_id, text, done, day, month_year) VALUES (?, ?, 0, ?, ?)",
+                (chat_id, text, day, month_year))
+            tid = cur.lastrowid
+        _commit(conn)
+        return tid
+    except Exception:
+        return None
+    finally:
+        _close(conn)
+
+def toggle_kegiatan(kegiatan_id):
+    conn = get_db()
+    cur = _exec(conn, "UPDATE kegiatan SET done = CASE WHEN done THEN 0 ELSE 1 END WHERE id = ?", (kegiatan_id,))
+    _commit(conn)
+    _close(conn)
+    return cur.rowcount > 0
+
+def delete_kegiatan(kegiatan_id):
+    conn = get_db()
+    cur = _exec(conn, "DELETE FROM kegiatan WHERE id = ?", (kegiatan_id,))
+    _commit(conn)
+    _close(conn)
+    return cur.rowcount > 0
+
+def get_kegiatan_by_day(chat_id, day):
+    conn = get_db()
+    cur = _exec(conn, "SELECT * FROM kegiatan WHERE chat_id = ? AND day = ? ORDER BY id", (chat_id, day))
+    rows = _rows_to_dicts(cur)
+    _close(conn)
+    return rows
+
+def get_kegiatan_by_month(chat_id, month_year):
+    conn = get_db()
+    cur = _exec(conn, "SELECT * FROM kegiatan WHERE chat_id = ? AND month_year = ? ORDER BY id", (chat_id, month_year))
+    rows = _rows_to_dicts(cur)
+    _close(conn)
+    return rows

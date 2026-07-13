@@ -37,6 +37,7 @@ def global_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 Manajemen Keuangan", callback_data="menu_finance")],
         [InlineKeyboardButton("📋 Absensi", callback_data="menu_absensi")],
+        [InlineKeyboardButton("📋 Kegiatan", callback_data="menu_kegiatan")],
         [InlineKeyboardButton("❓ Bantuan", callback_data="menu_help")],
     ])
 
